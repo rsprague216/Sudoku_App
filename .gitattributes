@@ -1,0 +1,42 @@
+# Normalize line endings to LF on check-in; let git convert on checkout per OS
+* text=auto eol=lf
+
+# C# / Blazor source
+*.cs        text diff=csharp
+*.razor     text diff=csharp
+*.razor.css text diff=css
+
+# Project / config files
+*.csproj    text diff=xml
+*.sln       text
+*.json      text
+*.props     text diff=xml
+*.targets   text diff=xml
+
+# Web assets
+*.html      text diff=html
+*.css       text diff=css
+*.js        text
+
+# Docs
+*.md        text
+
+# Binary assets — no line-ending conversion, no text diffs
+*.dll       binary
+*.dat       binary
+*.wasm      binary
+*.br        binary
+*.gz        binary
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.svg       text
+
+# Tell GitHub Linguist that Razor files are C#, not HTML
+*.razor     linguist-language=C#
+
+# Don't include project-internal docs in source archives (e.g. git archive)
+CLAUDE.md                  export-ignore
+sudoku-design-concept.md   export-ignore

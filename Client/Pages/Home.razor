@@ -1,0 +1,61 @@
+@page "/"
+
+@implements IDisposable
+
+@inject HttpClient Http
+@inject GameStateService GameState
+
+<PageTitle>Home</PageTitle>
+
+@if (GameState.Puzzle != null)
+{
+    <div @onkeydown="HandleKeyDown" tabindex="0" class="relative w-full">
+        <SudokuGrid Puzzle="GameState.Puzzle" />
+        @if (GameState.IsWon)
+        {
+            <div class="absolute inset-0 flex items-center justify-center bg-white/60">
+                <div class="bg-white border-2 border-green-500 rounded-xl px-10 py-8 text-center shadow-md">
+                    <p class="text-4xl font-bold text-green-600">You Win!</p>
+                </div>
+            </div>
+        }
+    </div>
+
+}
+else
+{
+    <SudokuGridSkeleton />
+}
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        var puzzle = await Http.GetFromJsonAsync<SudokuPuzzle>("api/puzzle");
+        if (puzzle != null)
+        {
+            GameState.LoadPuzzle(puzzle);
+        }
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+if (int.TryParse(e.Key, out int value))
+        {
+            GameState.EnterValue(value);
+        }
+        else if (e.Key == "Backspace" || e.Key == "Delete")
+        {
+            GameState.EnterValue(0);
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        GameState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        GameState.OnChange -= StateHasChanged;
+    }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "sudoku_app",
+  "version": "1.0.0",
+  "description": "A Sudoku web app built with **Blazor WebAssembly** — runs entirely in the browser with no backend required. Designed to support classic 9×9 puzzles now, with a variable-grid architecture ready for 4×4, 6×6, 12×12, and 16×16 in a future release.",
+  "main": "index.js",
+  "scripts": {
+    "build:css": "npx @tailwindcss/cli -i wwwroot/css/app.css -o wwwroot/css/app.min.css --minify",
+    "watch:css": "npx @tailwindcss/cli -i wwwroot/css/app.css -o wwwroot/css/app.min.css --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rsprague216/Sudoku_App.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/rsprague216/Sudoku_App/issues"
+  },
+  "homepage": "https://github.com/rsprague216/Sudoku_App#readme",
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.2.1",
+    "tailwindcss": "^4.2.1"
+  }
+}

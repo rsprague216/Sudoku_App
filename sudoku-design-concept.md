@@ -2,17 +2,18 @@
 
 ## Tech Stack
 
-### Frontend Framework
-**Blazor WebAssembly (.NET 8 or 9)**
-- Runs entirely client-side as WebAssembly — no server needed
-- Deploys as static files → perfect for **GitHub Pages** hosting
-- Use the `dotnet publish` output (`wwwroot/`) as your GitHub Pages site
-- Tooling: `dotnet new blazorwasm` template
+### Framework
+**Blazor WebAssembly Hosted (.NET 10)**
+- A 3-project solution: `Client` (WASM), `Server` (ASP.NET Core), `Shared` (models + interfaces)
+- The Client runs as WebAssembly in the browser; the Server hosts it and provides API endpoints
+- Tooling: `dotnet new blazorwasm --hosted`
+- The Server handles all external API calls (no CORS issues); the Client calls only our own server
 
 ### Hosting & Deployment
-**GitHub Pages** with a GitHub Actions CI/CD pipeline:
-- On push to `main`, build the Blazor WASM project and publish the `wwwroot/` output to the `gh-pages` branch
-- Important quirk: GitHub Pages doesn't understand Blazor's client-side routing. You'll need a custom `404.html` that redirects to `index.html` (a well-documented workaround)
+**A server host is required** (e.g. Railway, Azure App Service, Render, Fly.io — all have free tiers):
+- The ASP.NET Core server serves the WASM client and handles API proxying
+- On push to `main`, a GitHub Actions workflow builds and deploys the server project
+- GitHub Pages is not suitable for hosted Blazor — it only serves static files and cannot run the ASP.NET Core server
 
 ### External Sudoku API
 **Primary: [API Ninjas Sudoku](https://api-ninjas.com/api/sudoku)** (free, requires API key signup)
@@ -25,7 +26,7 @@
 - Endpoint: `GET /api/dosuku` returns board, solution, and difficulty
 - Use as a no-auth fallback if API Ninjas is down or rate-limited
 
-**Architecture note:** Abstract the API behind an `IPuzzleProvider` interface so you can swap between API Ninjas, the Vercel fallback, or a future local generator without touching components. Call from Blazor WASM using `HttpClient` injected via DI.
+**Architecture note:** Abstract the API behind an `IPuzzleProvider` interface so you can swap between API Ninjas, a future local generator, or any other source without touching components. `IPuzzleProvider` lives in the `Shared` project. The implementation (`ApiNinjasPuzzleProvider`) lives on the `Server` — it calls API Ninjas server-to-server with no CORS restrictions. The `Client` calls a `/api/puzzle` endpoint on our own server via `HttpClient`.
 
 **Supported grid configurations (via API Ninjas box params):**
 
@@ -56,37 +57,47 @@
 ## Architecture Overview
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                    Blazor WASM App                    │
-│                                                      │
-│  ┌──────────┐  ┌──────────┐  ┌────────────────────┐ │
-│  │  Pages   │  │Components│  │     Services        │ │
-│  │          │  │          │  │                    │ │
-│  │ Game     │  │ Grid     │  │ GameStateService   │ │
-│  │ Menu     │  │ Cell     │  │ TimerService       │ │
-│  │ Stats    │  │ NumPad   │  │ HintService        │ │
-│  │          │  │ Timer    │  │ StorageService     │ │
-│  │          │  │ Controls │  │                    │ │
-│  └──────────┘  └──────────┘  │ IPuzzleProvider    │ │
-│                              │   ├─ ApiNinjasProvider │
-│                              │   ├─ VercelFallback   │
-│                              │   └─ (LocalGenerator) │
-│                              └─────────┬──────────┘ │
-│                                        │             │
-└────────────────────────────────────────┼─────────────┘
-                                         │ HttpClient
-                                         ▼
-                          ┌──────────────────────────┐
-                          │  API Ninjas (primary)     │
-                          │  Vercel API (fallback)    │
-                          └──────────────────────────┘
+┌─────────────────────────────────────────┐
+│           Client (Blazor WASM)          │
+│                                         │
+│  ┌──────────┐  ┌──────────┐  ┌───────┐  │
+│  │  Pages   │  │Components│  │Services│  │
+│  │ Game     │  │ Grid     │  │GameState│ │
+│  │ Menu     │  │ Cell     │  │Timer   │  │
+│  │ Stats    │  │ NumPad   │  │Hints   │  │
+│  │          │  │ Controls │  │Storage │  │
+│  └──────────┘  └──────────┘  └───┬───┘  │
+│                                  │ HttpClient (/api/puzzle)
+└──────────────────────────────────┼──────┘
+                                   │
+┌──────────────────────────────────┼──────┐
+│           Server (ASP.NET Core)  │      │
+│                                  ▼      │
+│  ┌─────────────────────────────────┐   │
+│  │  PuzzleController               │   │
+│  │  GET /api/puzzle                │   │
+│  │   └─ ApiNinjasPuzzleProvider    │   │
+│  └──────────────────┬──────────────┘   │
+│                     │ HttpClient        │
+└─────────────────────┼───────────────────┘
+                      │
+┌─────────────────────▼───────────────────┐
+│            Shared project               │
+│  IPuzzleProvider, GridConfig,           │
+│  SudokuPuzzle, Move, Difficulty         │
+└─────────────────────────────────────────┘
+                      │ server-to-server
+                      ▼
+        ┌─────────────────────────┐
+        │  API Ninjas             │
+        └─────────────────────────┘
 ```
 
 ### Key Components
 
 | Component | Responsibility |
 |-----------|---------------|
-| `SudokuGrid` | N×N grid rendering (driven by `GridSize`), highlights row/col/box of selected cell. CSS grid uses dynamic `repeat(N, 1fr)` columns; thick borders calculated from `BoxWidth`/`BoxHeight` |
+| `SudokuGrid` | N×N grid rendering (driven by `GridConfig`), highlights row/col/box of selected cell. CSS grid uses `repeat(N, 2.5rem)` fixed-size columns; thick box-boundary borders calculated from `BoxWidth`/`BoxHeight` in `SudokuCell.BuildCellClass()` |
 | `SudokuCell` | Individual cell — displays value or pencil marks, handles tap/click. Pencil mark layout adapts to grid size (3×3 mini-grid for 9×9, 2×2 for 4×4, 4×4 for 16×16) |
 | `NumberPad` | Input panel (1–N + erase), dynamically generates buttons based on grid size. For 16×16, displays 1–9 and A–G. Adapts layout for touch vs. desktop |
 | `GameControls` | Undo, hint, new game, pencil mode toggle |
@@ -96,15 +107,15 @@
 
 ### Key Services
 
-| Service | Responsibility |
-|---------|---------------|
-| `IPuzzleProvider` | **Interface** abstracting puzzle fetching. Accepts `GridConfig` (boxWidth, boxHeight, difficulty). Implementations can be swapped without touching components |
-| `ApiNinjasPuzzleProvider` | Primary `IPuzzleProvider` — calls API Ninjas with box size + difficulty params, maps JSON response to internal `SudokuPuzzle` model |
-| `VercelPuzzleProvider` | Fallback `IPuzzleProvider` — calls the no-auth Vercel API (9×9 only) |
-| `GameStateService` | Core game logic — cell selection, value entry, validation, undo stack, win detection. All logic uses `N`, `BoxWidth`, `BoxHeight` — never hardcoded `9`/`3` |
-| `HintService` | Analyzes the current board state and suggests the next logical move. Uses universal techniques (naked singles, hidden singles) that work across all grid sizes |
-| `TimerService` | Tracks elapsed time, supports pause/resume |
-| `LocalStorageService` | JS interop wrapper for persisting settings, stats, theme preference, and in-progress games |
+| Service | Lives in | Responsibility |
+|---------|----------|---------------|
+| `IPuzzleProvider` | Shared | **Interface** abstracting puzzle fetching. Accepts `GridConfig` and `Difficulty`. Implementations can be swapped without touching components |
+| `ApiNinjasPuzzleProvider` | Server | Calls API Ninjas server-to-server (no CORS), maps JSON response to `SudokuPuzzle` |
+| `PuzzleController` | Server | Exposes `GET /api/puzzle?difficulty=&boxWidth=&boxHeight=`, delegates to `IPuzzleProvider` |
+| `GameStateService` | Client | Core game logic — cell selection, value entry, validation, undo stack, win detection. All logic uses `N`, `BoxWidth`, `BoxHeight` — never hardcoded `9`/`3` |
+| `HintService` | Client | Analyzes the current board state and suggests the next logical move |
+| `TimerService` | Client | Tracks elapsed time, supports pause/resume |
+| `LocalStorageService` | Client | JS interop wrapper for persisting settings, stats, theme preference, and in-progress games |
 
 ---
 
@@ -124,16 +135,9 @@ SudokuPuzzle
 ├── Config: GridConfig
 ├── Board: int[N][N]           // Current player state (0 = empty), where N = Config.Size
 ├── Solution: int[N][N]        // Correct solution
-├── GivenCells: bool[N][N]     // true = pre-filled, non-editable
-├── PencilMarks: Set<int>[N][N]  // Notes per cell
-├── Difficulty: enum            // Easy, Medium, Hard
-└── MoveHistory: Stack<Move>    // For undo
-
-Move
-├── Row, Col: int
-├── PreviousValue: int
-├── NewValue: int
-└── PreviousPencilMarks: Set<int>
+├── GivenCells: bool[N][N]     // true = pre-filled OR correctly solved (locked in)
+├── PencilMarks: Set<int>[N][N]  // Notes per cell (Phase 2)
+└── Difficulty: enum            // Easy, Medium, Hard
 ```
 
 **Why `GridConfig` matters:** Every component and service receives the puzzle's `GridConfig` to determine loop bounds, valid values, box boundaries, display symbols, and layout dimensions. This single source of truth prevents scattered magic numbers.
@@ -241,73 +245,89 @@ Let the player choose how much help they want. Track hint usage in stats (hints 
 ## Project Structure
 
 ```
-SudokuApp/
-├── wwwroot/
-│   ├── css/
-│   │   ├── app.css              # Tailwind directives (@tailwind base/components/utilities) + CSS custom properties
-│   │   └── app.min.css          # Compiled Tailwind output (generated, gitignored)
-│   ├── index.html
-│   └── 404.html                 # GitHub Pages SPA redirect hack
-├── Pages/
-│   ├── Index.razor              # Main game page
-│   ├── Menu.razor               # New game / difficulty + grid size select
-│   └── Stats.razor              # Best times, games played
-├── Components/
-│   ├── SudokuGrid.razor         # Renders N×N grid from GridConfig
-│   ├── SudokuCell.razor         # Adapts pencil mark layout to grid size
-│   ├── NumberPad.razor          # Generates 1..N buttons dynamically
-│   ├── TimerDisplay.razor
-│   ├── GameControls.razor
-│   ├── DifficultySelector.razor
-│   └── GridSizeSelector.razor   # Grid size picker (hidden in v1)
-├── Services/
-│   ├── IPuzzleProvider.cs       # Interface: GetPuzzle(GridConfig, Difficulty)
-│   ├── ApiNinjasPuzzleProvider.cs
-│   ├── VercelPuzzleProvider.cs  # Fallback, 9×9 only
-│   ├── GameStateService.cs
-│   ├── HintService.cs
-│   ├── TimerService.cs
-│   └── LocalStorageService.cs
-├── Models/
-│   ├── GridConfig.cs            # BoxWidth, BoxHeight, Size, Symbols
-│   ├── SudokuPuzzle.cs
-│   ├── CellState.cs
-│   ├── Move.cs
-│   └── GameStats.cs
-├── Program.cs                   # Service registration, HttpClient setup, IPuzzleProvider DI
-├── SudokuApp.csproj
-├── package.json                 # Node deps (tailwindcss)
-└── tailwind.config.js           # Content paths: .razor, .html; darkMode: 'class'
+SudokuApp/                          # Solution root
+├── SudokuApp.sln
+├── Client/                         # Blazor WASM project
+│   ├── wwwroot/
+│   │   ├── css/
+│   │   │   ├── app.css             # Tailwind source + CSS custom properties
+│   │   │   └── app.min.css         # Compiled Tailwind output (gitignored)
+│   │   └── index.html
+│   ├── Pages/
+│   │   ├── Home.razor              # Main game page
+│   │   ├── Menu.razor              # New game / difficulty + grid size select
+│   │   └── Stats.razor             # Best times, games played
+│   ├── Components/
+│   │   ├── SudokuGrid.razor        # Renders N×N grid from GridConfig
+│   │   ├── SudokuCell.razor        # Adapts pencil mark layout to grid size
+│   │   ├── NumberPad.razor         # Generates 1..N buttons dynamically
+│   │   ├── TimerDisplay.razor
+│   │   ├── GameControls.razor
+│   │   ├── DifficultySelector.razor
+│   │   └── GridSizeSelector.razor  # Grid size picker (hidden in v1)
+│   ├── Services/
+│   │   ├── GameStateService.cs
+│   │   ├── HintService.cs
+│   │   ├── TimerService.cs
+│   │   └── LocalStorageService.cs
+│   ├── _Imports.razor
+│   ├── App.razor
+│   ├── Program.cs                  # DI: HttpClient pointed at Server base address
+│   ├── package.json                # Node deps (tailwindcss)
+│   └── Client.csproj
+│
+├── Server/                         # ASP.NET Core project
+│   ├── Controllers/
+│   │   └── PuzzleController.cs     # GET /api/puzzle → IPuzzleProvider
+│   ├── Services/
+│   │   └── ApiNinjasPuzzleProvider.cs
+│   ├── appsettings.json            # API key placeholder
+│   ├── appsettings.Development.json  # Real API key (gitignored)
+│   ├── Program.cs                  # Hosts WASM client, registers IPuzzleProvider
+│   └── Server.csproj
+│
+└── Shared/                         # Shared class library
+    ├── Models/
+    │   ├── GridConfig.cs           # BoxWidth, BoxHeight, Size, Symbols
+    │   ├── SudokuPuzzle.cs
+    │   ├── Difficulty.cs
+    │   └── GameStats.cs
+    ├── Services/
+    │   └── IPuzzleProvider.cs      # Interface used by both Client and Server
+    └── Shared.csproj
 ```
 
 ---
 
 ## Development Roadmap
 
-### Phase 1 — Walking Skeleton (9×9 only, variable-size architecture)
-Get a puzzle on screen and make it playable, but build on the generic foundation:
-- [ ] Scaffold Blazor WASM project + Tailwind CSS setup
-- [ ] Define `GridConfig` model and `IPuzzleProvider` interface
-- [ ] Implement `ApiNinjasPuzzleProvider` (hardcode `boxWidth=3, boxHeight=3` for now)
-- [ ] Implement `VercelPuzzleProvider` as fallback
-- [ ] Render the N×N grid driven by `GridConfig` (will be 9×9 at launch)
-- [ ] Cell selection + number input (click/tap only)
-- [ ] Basic win detection (compare board to solution)
+### Phase 1 — Walking Skeleton ✅ Complete
+- [x] Define `GridConfig`, `SudokuPuzzle`, `Difficulty` models (`Move` removed — undo not needed with immediate feedback)
+- [x] Define `IPuzzleProvider` interface
+- [x] Implement `ApiNinjasPuzzleProvider` on the Server
+- [x] Restructure into hosted solution (Client / Server / Shared projects)
+- [x] Wire up `PuzzleController` on the Server
+- [x] Scaffold `SudokuGrid` and `SudokuCell` components
+- [x] Render the N×N grid driven by `GridConfig` (9×9 for now), styled with Tailwind
+- [x] `GameStateService` (Client singleton — owns all game state, fires `OnChange` for re-render)
+- [x] Cell selection (click highlights selected cell; row/column/same-number highlighting)
+- [x] Number input (keyboard entry into selected non-given cell)
+- [x] Correct/incorrect feedback (correct entries lock in as givens; wrong entries highlight red)
+- [x] Win detection (`IsWon` via `GivenCells.All`; "You Win!" card overlay)
 
 ### Phase 2 — Core Features
 - [ ] Pencil marks (toggle mode + display, layout driven by `GridConfig`)
-- [ ] Undo (move history stack)
 - [ ] Timer (start on first input, pause, display)
 - [ ] Difficulty selection (pass param to `IPuzzleProvider`)
-- [ ] Error highlighting (optional: toggle strict vs. free mode)
-- [ ] NumberPad generating buttons from `1..N` (still 9 for now, but generic)
+- [ ] NumberPad component generating buttons from `1..N` (still 9 for now, but generic)
+- [ ] New game button
 
 ### Phase 3 — Polish & UX
 - [ ] Dark mode toggle + theme system (Tailwind `dark:` variants)
 - [ ] Responsive layout (mobile/tablet/desktop)
-- [ ] Keyboard navigation (arrow keys + number keys)
+- [ ] Keyboard navigation (arrow keys to move between cells)
 - [ ] Touch interactions (long-press, haptic feedback)
-- [ ] Animations (selection, error shake, win celebration)
+- [ ] Animations (win celebration cascade)
 - [ ] Hint system (3-tier progressive hints, universal techniques)
 
 ### Phase 4 — Persistence & Stats
@@ -316,9 +336,9 @@ Get a puzzle on screen and make it playable, but build on the generic foundation
 - [ ] Stats page with personal bests
 
 ### Phase 5 — Deployment
-- [ ] GitHub Actions workflow for CI/CD (Node + .NET build steps)
-- [ ] Publish to GitHub Pages
-- [ ] Add `404.html` redirect for client-side routing
+- [ ] GitHub Actions workflow for CI/CD (.NET build + Tailwind CSS build)
+- [ ] Deploy Server project to a host with free tier (Railway, Render, or Azure App Service)
+- [ ] Store API key as a secret in the hosting environment (not in code)
 - [ ] README with screenshots and live demo link
 
 ### Phase 6 — Variable Grid Sizes (v2)
@@ -335,11 +355,11 @@ Get a puzzle on screen and make it playable, but build on the generic foundation
 
 **API reliability:** Free Sudoku APIs can go down or rate-limit. Mitigation: the `IPuzzleProvider` abstraction lets you swap to `VercelPuzzleProvider` (9×9 only) automatically on failure. Long-term, build a local puzzle generator for full offline support.
 
-**API key exposure:** API Ninjas requires an API key. In a Blazor WASM app, *all code runs in the browser* — the key will be visible in network requests. This is acceptable for a free-tier key with no billing risk, but don't reuse the key for paid services. Document this trade-off in your README.
+**API key security:** The API Ninjas key now lives on the Server, not in the browser. Store it in `appsettings.Development.json` locally (gitignored) and as an environment variable/secret on the hosting platform. Never commit the real key to the repository.
 
 **Blazor WASM initial load time:** The .NET runtime downloads ~2–5MB on first load. Mitigations: enable Brotli compression, use lazy loading for non-critical assemblies, add a loading screen with a progress indicator. After first load, the runtime is cached.
 
-**GitHub Pages 404 routing:** Blazor's client-side router needs all paths to serve `index.html`. The `404.html` redirect trick works but has a brief flash. Document this in your README.
+**Client-side routing on hosted platforms:** Blazor's client-side router needs all paths to serve `index.html`. The ASP.NET Core server handles this automatically via `MapFallbackToFile("index.html")` — no workaround needed as with GitHub Pages.
 
 **Touch vs. mouse input:** Test early and often on real devices. The `@ontouchstart` and `@onclick` events can conflict — you may need to handle both carefully to avoid double-fires.
 

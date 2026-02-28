@@ -1,0 +1,76 @@
+@implements IDisposable
+@namespace SudokuApp.Components
+@using SudokuApp.Models
+@inject GameStateService GameState
+
+<div class="@_cellClass" @onclick="() => GameState.SelectCell(Row, Col)">
+    @if (IsGiven)
+    {
+        <span class="w-full h-full flex items-center justify-center font-bold text-gray-800 select-none text-lg">
+            @(Value == 0 ? "" : Value.ToString())
+        </span>
+    }
+    else
+    {
+        <input type="text" maxlength="1"
+               class="w-full h-full text-center text-lg bg-transparent focus:outline-none cursor-pointer"
+               value="@(Value == 0 ? "" : Value.ToString())" />
+    }
+</div>
+
+@code {
+    [Parameter] public bool IsGiven { get; set; }
+    [Parameter] public int Value { get; set; }
+    [Parameter] public int Row { get; set; }
+    [Parameter] public int Col { get; set; }
+    [Parameter] public GridConfig Config { get; set; } = default!;
+    private bool IsSelected => GameState.SelectedRow == Row && GameState.SelectedCol == Col;
+    private bool IsCorrect => GameState.IsCorrect(Row, Col);
+    private bool IsInSameRowOrCol => GameState.IsInSelectedRowOrCol(Row, Col);
+    private bool IsSameValueAsSelected => GameState.IsSameValueAsSelected(Row, Col);
+
+    protected override void OnInitialized()
+    {
+        GameState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        GameState.OnChange -= StateHasChanged;
+    }
+
+    private string _cellClass => BuildCellClass();
+
+    private string BuildCellClass()
+    {
+        var borderRight = (Col + 1) % Config.BoxWidth == 0 && Col < Config.Size - 1
+            ? "border-r-2 border-r-gray-800"
+            : "border-r border-r-gray-300";
+
+        var borderBottom = (Row + 1) % Config.BoxHeight == 0 && Row < Config.Size - 1
+            ? "border-b-2 border-b-gray-800"
+            : "border-b border-b-gray-300";
+
+        var bg = IsGiven ? "bg-gray-100" : "bg-white";
+        var textColor = "text-blue-700";
+        if (IsInSameRowOrCol)
+        {
+            bg = "bg-blue-100";
+        }
+        if (IsSelected)
+        {
+            bg = "bg-blue-200";
+        }
+        if (IsSameValueAsSelected && Value != 0)
+        {
+            bg = "bg-blue-200";
+        }
+        if (!IsCorrect)
+        {
+            bg = "bg-red-200";
+            textColor = "text-red-700";
+        }
+
+        return $"aspect-square w-full flex items-center justify-center {borderRight} {borderBottom} {bg} {textColor}";
+    }
+}

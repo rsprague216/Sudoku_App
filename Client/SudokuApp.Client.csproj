@@ -10,6 +10,16 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.2" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.2" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Shared\SudokuApp.Shared.csproj" />
+  </ItemGroup>
+
+  <!-- Run Tailwind CSS build before publishing -->
+  <Target Name="BuildTailwind" BeforeTargets="Publish">
+    <Exec Command="npm run build:css" WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
 
 </Project>
