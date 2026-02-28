@@ -107,8 +107,3 @@ SudokuApp/
 - [ ] Phase 5 — Deployment + CI/CD
 - [ ] Phase 6 — Variable grid sizes (4×4, 6×6, 12×12, 16×16)
 
----
-
-## License
-
-MIT
