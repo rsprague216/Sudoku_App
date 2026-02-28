@@ -5,3 +5,4 @@ obj/
 node_modules/
 Client/wwwroot/css/app.min.css
 Server/appsettings.Development.json
+Learning_Notes/

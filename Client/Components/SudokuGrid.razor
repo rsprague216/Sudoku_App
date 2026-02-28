@@ -4,19 +4,22 @@
 @namespace SudokuApp.Components
 
 <div class="w-full px-4">
-    <div class="grid w-full max-w-[22.5rem] mx-auto border-2 border-gray-800"
-         style="grid-template-columns: repeat(@Puzzle.Config.Size, 1fr);">
-        @for (int row = 0; row < Puzzle.Config.Size; row++)
-        {
-            for (int col = 0; col < Puzzle.Config.Size; col++)
+    <div class="relative w-full max-w-[22.5rem] mx-auto">
+        <div class="grid w-full"
+             style="grid-template-columns: repeat(@Puzzle.Config.Size, minmax(0, 1fr));">
+            @for (int row = 0; row < Puzzle.Config.Size; row++)
             {
-                <SudokuCell IsGiven="@Puzzle.GivenCells[row][col]"
-                            Value="@Puzzle.Board[row][col]"
-                            Row="@row"
-                            Col="@col"
-                            Config="@Puzzle.Config" />
+                for (int col = 0; col < Puzzle.Config.Size; col++)
+                {
+                    <SudokuCell IsGiven="@Puzzle.GivenCells[row][col]"
+                                Value="@Puzzle.Board[row][col]"
+                                Row="@row"
+                                Col="@col"
+                                Config="@Puzzle.Config" />
+                }
             }
-        }
+        </div>
+        <div class="absolute inset-0 border-2 border-gray-800 pointer-events-none"></div>
     </div>
 </div>
 
